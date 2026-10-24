@@ -1,13 +1,28 @@
-# 아크포인트 스튜디오 GTM 트리거 루프 — 에이전트 소비용 스펙 (본문: GTM-LOOP.md)
-version: 4
-experiment: "B-00 C1 이음 외 병원 도달 — 트리거 기반 타이밍 실험 (7일)"
-changes_from_v3: ["우편 DM·3군 우편 실험 삭제 (10/24 결정)", "T2 채용공고 트리거·공고 지원 경로 삭제 (10/24 결정)", "H-T를 트리거 농축도(신청 병원 트리거 비율 vs 모집단 비율)로 재설계", "광고 예산을 산식 + 7일 상한으로 교체", "가격: 병원가 표준, 어필리에이트에게만 비공개 공유"]
+# 아크포인트 스튜디오 GTM 빈칸 루프 — 에이전트 소비용 스펙 (본문: GTM-LOOP.md)
+version: 5
+experiment: "B-00 C1 이음 외 병원 도달 — 환자 수요 선증명(빈칸 글) + 트리거 측정 (7일)"
+changes_from_v4:   # 이유: LOOP-CHANGELOG.md 2026-10-24 항목
+  - "엔진 교체: 병원을 고르는 루프 → 빈칸(동네 의원이 답하지 않은 동네×증상 질문)을 건강정보 글로 먼저 채워 환자 수요를 증명하는 루프"
+  - "단계 추가: gap_finder, health_writer, reach_tracker"
+  - "트리거(T1·T3)는 빈칸 우선순위 가중치와 H-T 측정에만 사용"
+  - "North Star TVR → VSR (트리거 없는 저관여 의원도 대상). TVR은 하위 지표"
+  - "광고 손절 기준 광고 TVR 0 → 광고 VSR 0, GAP 키워드 그룹·증거 문안 추가"
+  - "파운더 글: 개원·대행 교체 시리즈 → '서울 동네 의원 블로그 빈칸 지도' 연재"
+  - "제출 목표 4개(VSR 5, TVR 지지 문턱, SLA 위반 0, 유료 1)는 유지"
 hypotheses:
+  H-G: {claim: "첫 발행 후 4일이 지난 칸 중 증명된 칸 비율 >= 30%", design: "content_log.csv 집계", status: 가설}
   H-T: {claim: "모집단 안에서 검증된 신청 병원의 트리거 비율이 모집단 트리거 비율의 2배 이상", design: "관찰 비교 (한쪽 이항검정, 모집단 비율 = population.csv)"}
-  verdict: {support: "트리거 신청 >= 2 AND Lift >= 2 AND 한쪽 이항 p < 0.10", insufficient: "모집단 안 검증 신청 < 5", otherwise: "미확정 (7일 재측정)", no_reject_within_7d: true}
-  limitation: "트리거 맞춤 채널로 모은 신청이라 '트리거 채널이 트리거 병원을 데려오는가'를 본다. 타이밍의 순수 인과 효과는 아님"
+  verdict:
+    H-G: {support: "판정 대상 칸 >= 5 AND 증명 비율 >= 0.30", insufficient: "판정 대상 칸 < 5", otherwise: "미확정 (7일 재측정)"}
+    H-T: {support: "트리거 신청 >= 2 AND Lift >= 2 AND 한쪽 이항 p < 0.10", insufficient: "모집단 안 검증 신청 < 5", otherwise: "미확정 (7일 재측정)"}
+    no_reject_within_7d: true
+  limitation:
+    - "조회수는 사람 수가 아님 (네이버 블로그 통계)"
+    - "새 글의 7일 내 검색 노출 여부 미확인"
+    - "의원에게 알리는 경로가 인바운드뿐 (가장 약한 고리)"
+    - "법률 자문 미실시 (GTM-LOOP.md §5-6)"
 excluded_sources: [cso_eum]   # 이음 CSO 경유 리드는 기록만, 실험 집계 제외
-not_used:   # 기존에 검토했거나 시행 중이거나 10/24에 제외한 것 (GTM-LOOP.md §1-1)
+not_used:   # 기존에 검토했거나 시행 중이거나 10/24에 제외한 것 (GTM-LOOP.md §1-2)
   - "이음 CSO 소개 루프 (B-00·B-01·B-02)"
   - "무료 샘플 진입 (R-06 G01) — 신청 이후 처리 흐름으로만 연결"
   - "블로그 진단 리포트 (EUM-50)"
@@ -17,14 +32,37 @@ not_used:   # 기존에 검토했거나 시행 중이거나 10/24에 제외한 �
   - "우편 DM (10/24 제외)"
   - "채용공고 감지·지원 (10/24 제외)"
   - "1:1 콜드 메일·문자"
+  - "환자 리드·트래픽 판매 (rank and rent식 과금) — 의료법 제27조 제3항·제56조 제1항"
 run_window: {start: 2026-10-25, end: 2026-10-31, timezone: Asia/Seoul, report: 2026-11-01}
+baseline_2026_10_24: {paid_customers: 1, new_requests: 0, gap_posts: 0}
 ssot: ledger.csv                   # 신청 병원 1곳 = 1행 (예시 행은 ledger.sample.csv)
+content_log: content_log.csv       # 빈칸 글 1편 × 하루 = 1행 (누적값). 예시는 content_log.sample.csv
 population: population.csv         # date,n_scanned,n_trig,n_t1,n_t3 — Trigger Watcher 일일 스캔 규모
 channel_stats: channel_stats.csv   # source,spend_krw,visits (어필리에이트 정산액은 spend에 포함)
+changelog: LOOP-CHANGELOG.md       # 조정 규칙 발동·사람 변경 = 1줄 (본 수치 → 규칙 → 바꾼 것 → 다음 날 결과)
 primary_key: ykiho                 # 심평원 요양기호
-validator: "python3 validate_ledger.py ledger.csv --stats channel_stats.csv --pop population.csv --guard guardrail_log.csv"
+validator: "python3 validate_ledger.py ledger.csv --stats channel_stats.csv --pop population.csv --content content_log.csv --guard guardrail_log.csv"
 
-triggers:
+gaps:   # v5 — 빈칸 정의 (GTM-LOOP.md §3-2)
+  cell: "지역어(구·동·역 이름) × 진료과"
+  keyword: {form: "{지역어} {증상·검사·진료 시기·생활 관리}", min_monthly_search: 30, exclude: "< 10", status: 가설, d0_check: "지역어+증상 조합 검색수 분포"}
+  is_gap: "네이버 블로그 검색 상위 10개 중 같은 지역어·같은 진료과 의원 글 0개 (애매하면 의원 글로 봄)"
+  sellable: "칸 안 같은 진료과 의원 >= 1 (심평원 목록)"
+  evidence: ["검색 결과 목록 sha256 해시", "키워드 도구 조회값", "심평원 응답 해시"]
+  priority: "월간 검색수 × (1 + 0.5 × [칸 안 T1·T3 의원 있음])"
+  proven_cell: {rule: "발행 7일 이내 검색 유입 조회 합 >= 20 AND top_query에 지역어 포함", min_search_views: 20, window_days: 7, status: "가설 — D3에 한 번만 조정, CHANGELOG 기록"}
+
+content:   # v5 — 빈칸 글 (GTM-LOOP.md §5-0)
+  location: "아크포인트 대표 네이버 블로그 '동네 건강정보' 카테고리 (D7 결정 대기)"
+  structure: "질문 → 공공 출처 기반 설명 → 진료 권장 시점 일반 안내 → 출처 목록"
+  sources_required: "공공·학술 출처 URL >= 1 (질병관리청 국가건강정보포털, 학회 진료지침 등)"
+  forbidden: [병원 이름·연락처·위치 특정, 특정 병원 추천·링크, 진단·치료 권유, 효과 보장, 가격]
+  footer: {text: "이 동네에서 진료하시는 원장님·실장님께 — 이 동네 질문 목록과 원고 3편 무료", utm: "gap_footer_{cell_id}", source: gap_footer}
+  daily_cap: 3
+  approval: "모든 글 사람 승인 후 발행"
+  handover: "신청 병원 원고는 새로 씀 (그대로 옮기지 않음 — 유사 문서 위험). 빈칸 글은 병원 링크 없이 유지"
+
+triggers:   # v4 유지 — 우선순위 가중치·H-T 측정용
   T1: {name: 신규 개원, rule: "심평원 개설일자 <= 90일", evidence: "응답 sha256 해시", trigger_date: 개설일자, valid_days: 90, d0_check: "개설일자 필드 존재 여부"}
   T3: {name: 발행 단절, rule: "직전 180일 주1회 이상 AND 최근 28일 0건 (네이버 블로그 RSS)", evidence: "RSS sha256 해시", trigger_date: "마지막 게시일 + 28일", valid_days: 30}
   none: {name: 트리거 없음, rule: "T1·T3 해당 없음"}
@@ -32,11 +70,19 @@ classification: "신청 병원도 모집단 스캔과 같은 규칙·같은 증�
 in_pop: "신청 병원이 Trigger Watcher 스캔 범위(지역 × 진료과) 안이면 1. H-T 판정은 in_pop=1만"
 
 north_star:
-  id: TVR
-  definition: "excluded_sources 외 + trigger in T1·T3 + 신청 시점에 유효기간 안 + G1~G5 PASS + 샘플 신청 완료 (ykiho 중복 제거)"
-  target_7d: "모집단 안 검증 신청 >= 5 (판정 최소치) AND 트리거 신청이 검문기 '지지 문턱' 이상"   # 가설, 근거는 §4-3
-  decision_metrics: [tvr_by_trigger, paid_by_trigger, CPTVR, avg_sample_hours, bot_rate]
-  excluded_from_judgement: [C1, C2, C3, C4, C5]
+  id: VSR
+  definition: "excluded_sources 외 + G1~G5 PASS + 샘플 신청 완료 (ykiho 중복 제거)"
+  target_7d: ">= 5"   # 제출 목표 1
+  sub_metrics:
+    TVR: {definition: "VSR 중 신청 시점에 트리거 유효기간 안", target_7d: "검문기 '지지 문턱' 이상 (p0 8%면 2건)"}   # 제출 목표 2
+    sla_violations: {target_7d: 0}   # 제출 목표 3
+    paid: {target_7d: 1}             # 제출 목표 4 (유료 고객 1 → 2)
+  leading:
+    gap_posts: {target_7d: 18, basis: "daily_cap 3 × D1~D6"}
+    reach_search_views: {target_7d: "측정 (목표 없음)", note: "조회수, 사람 수 아님"}
+    proven_cell_ratio: {target_7d: ">= 0.30", basis: H-G}
+  decision_metrics: [vsr_by_source, paid_by_source, CPVSR, search_views_per_post_by_kw_type, reach_by_cell, avg_sample_hours, bot_rate]
+  excluded_from_judgement: [C1, C2, C3, C4, C5, views_cum]
 
 hard_gates:
   G1: {name: 요양기관 실재, check: "심평원 조회 ykiho 존재", field: g1}
@@ -59,60 +105,82 @@ score:   # 신청 병원 우선순위(제작 순서·유료 안내 순서)용, �
 
 stages:
   - {id: trigger_watcher, out: [population.csv, trigger_map], pass: "매일 지역 × 진료과 스캔 규모와 T1·T3 수 기록, 트리거마다 증거 해시"}
-  - {id: channel_planner, out: [ad_regions, keyword_groups, creator_shortlist, founder_topic], pass: "광고 지역 = trigger_map 상위 구, 일 예산 산식(ads.budget) 안"}
-  - {id: copywriter, out: [copy_t1, copy_t3], pass: "금지 표현·발행 보장 표현·가격 0, 수치 출처 URL, 전 문안 사람 승인"}
+  - {id: gap_finder, in: [trigger_map, keyword_candidates], out: [gap_list], pass: "빈칸마다 검색 결과 해시·키워드 도구 조회값, 칸 안 의원 >= 1"}
+  - {id: health_writer, in: [gap_list], out: [gap_post], pass: "공공 출처 URL >= 1, 병원명·연락처·진단 권유·가격 0, 사람 승인, 일 3편 이하", human: "글 승인"}
+  - {id: reach_tracker, in: [naver_blog_stats], out: [content_log.csv], pass: "글마다 하루 1행, 누적값 감소 없음, 검색 유입 <= 전체 조회"}
+  - {id: channel_planner, out: [ad_regions, keyword_groups, creator_shortlist, founder_topic], pass: "광고 지역 = 증명된 칸 상위 구(없으면 빈칸 우선순위·trigger_map), 일 예산 산식(ads.budget) 안"}
+  - {id: copywriter, out: [evidence_copy], pass: "인용 수치가 content_log.csv 행으로 역추적, 금지·보장 표현·가격 0, 전 문안 사람 승인"}
   - {id: channel_runner, out: [utm, channel_stats.csv], pass: "7일 상한 안, 공개 채널 가격 노출 0"}
-  - {id: inbound_verifier, out: [g1, g2, g3, g4, g5, bot_flags, evidence_hash, in_pop, trigger, trigger_date, trigger_evidence, detected_at], pass: "모집단과 같은 규칙으로 트리거 분류"}
+  - {id: inbound_verifier, out: [g1, g2, g3, g4, g5, bot_flags, evidence_hash, in_pop, trigger, trigger_date, trigger_evidence, detected_at, utm], pass: "모집단과 같은 규칙으로 트리거 분류, UTM으로 칸 귀속"}
   - {id: scorer, out: [c1, c2, c3, c4, c5, score, grade], pass: "합계 일치, 배점 범위 안"}
-  - {id: sample_queue, out: [sample_requested_at, sample_sent_at, sample_hours, result_checked_at, paid_applied_at], pass: "3영업일 SLA 위반 0, sample_hours 기록, 견적은 병원가", human: "운영자 제작·전달 (R-05)"}
-  - {id: analyst, out: [daily_report], pass: "validate_ledger.py exit 0"}
+  - {id: sample_queue, out: [sample_requested_at, sample_sent_at, sample_hours, result_checked_at, paid_applied_at], pass: "3영업일 SLA 위반 0, sample_hours 기록, 칸 질문 목록 첨부, 원고는 새로 씀, 견적은 병원가", human: "운영자 제작·전달 (R-05)"}
+  - {id: analyst, out: [daily_report, LOOP-CHANGELOG.md], pass: "validate_ledger.py exit 0, 발동한 조정 규칙마다 CHANGELOG 1줄"}
 
 pricing:   # D6 확정 (10/24)
   standard: 병원가   # R-04 (9/21, VAT 별도 월). 금액은 비공개(D6) — 공개 레포에 적지 않음
-  public_channels: 비노출   # 광고·파운더 글·크리에이터 공개 게시물
+  public_channels: 비노출   # 광고·빈칸 글·파운더 글·크리에이터 공개 게시물
   affiliate_only: "어필리에이트(크리에이터·실장)에게만 병원가표를 비공개로 공유. 소개하는 병원에 1:1로만 전달 가능"
   partner_price: "이 루프에서 사용·공유하지 않음"
+  no_per_patient_fee: "환자 수·리드 수 연동 과금 없음 (의료법 제27조 제3항)"
 
 channels:
   landing: {hospital: "https://arkpoint.vercel.app/hospital", apply: "https://arkpoint-content-trial.acekim911.chatgpt.site/#apply"}
+  gap_footer: {utm: "gap_footer_{cell_id}", source: gap_footer}
   ads:
-    groups: {T1: [병원 개원 블로그, 개원 마케팅, 의원 개원 홍보, 개원 준비 체크리스트], T3: [병원 블로그 대행 해지, 블로그 대행 바꾸기, 병원 블로그 대행 교체]}
-    utm: "sa_{t1|t3}"
+    groups:
+      GAP: [병원 블로그 마케팅, 의원 블로그 관리, 피부과 블로그 마케팅, 내과 블로그 마케팅]
+      T1: [병원 개원 블로그, 개원 마케팅, 의원 개원 홍보, 개원 준비 체크리스트]
+      T3: [병원 블로그 대행 해지, 블로그 대행 바꾸기, 병원 블로그 대행 교체]
+    utm: "sa_{gap|t1|t3}"
+    evidence_copy: {from: D4, numbers_from: content_log.csv, unit: "조회 n회 (환자 n명 아님)"}
     budget:   # D3 — 3만원/일(v3)은 근거 없는 값이라 폐기
       cap_7d_rule: "R-04 주3회 병원가(첫 달) × 7일 목표 유료 신청 1건"   # CAC가 첫 달 매출을 넘지 않게
       cap_7d_krw: "env GTM_AD_CAP_7D_KRW 또는 validate_ledger.py --ad-cap"   # 병원가 비공개(D6)라 값은 레포 밖에 둠
       daily_krw: "min(Σ 키워드별 월평균 클릭수/30 × 예상 CPC, 남은 상한 / 남은 일수)"
       d0_inputs: "네이버 검색광고 키워드 도구: 월간 검색수·월평균 클릭수·예상 입찰가"
-      stop_loss: "상한 절반 소진 시 광고 TVR 0 → 광고 정지"
+      stop_loss: "상한 절반 소진 시 광고 VSR 0 → 광고 정지"
   affiliate:   # 마이크로 인플루언서 매칭 + 어필리에이트, D5 확정
-    types: {siljang: "병원 실장·코디네이터 (T3·T1 당사자)", founder_doctor: "개원 준비·개원 후기 원장 (T1)"}
+    types: {siljang: "병원 실장·코디네이터 (의원 블로그 실무 담당)", founder_doctor: "개원 준비·개원 후기 원장 (T1)"}
+    offer: "본인 병원 '우리 동네 우리 과 빈칸 리포트' 무료 + 팔로워용 신청 링크"
     follower_range: [1000, 30000]
     min_practice_post_ratio: 0.30
     utm: "inf_{handle}"
-    reward: "소개 병원 유료 신청 시 첫 달 이용료(병원가) 10% 수동 정산"
+    reward: "소개 병원 유료 신청 시 첫 달 이용료(병원가) 10% 수동 정산 (B2B 소개 보상, 환자 소개 아님)"
     price_disclosure: "pricing.affiliate_only"
-  founder: {series: {T1: "개원 D-90~D+90 블로그 체크리스트", T3: "대행사 교체 시 블로그 공백 막기"}, platforms: [naver_blog, linkedin], utm: "founder_{t1|t3}"}
+  founder: {series: "서울 동네 의원 블로그 빈칸 지도", posts: {D2: "0주차 — 구×진료과별 빈칸 수", D5: "1주차 — 독자가 붙은/안 붙은 질문 유형"}, platforms: [naver_blog, linkedin], utm: "founder_map"}
 
 guardrail_log: guardrail_log.csv   # 원장으로 판정 불가한 항목은 매일 수동 기록, 검문기가 count>0을 위반으로 처리
 guardrails:
   - {metric: missing_ad_label, op: ">=", value: 1, action: pause_channel}
   - {metric: guarantee_claims, op: ">=", value: 1, action: pause_channel}
   - {metric: public_price_exposed, op: ">=", value: 1, action: pause_channel}
+  - {metric: clinic_named_in_gap_post, op: ">=", value: 1, action: pause_post}            # guardrail_log 수동
+  - {metric: diagnosis_or_efficacy_claim_in_gap_post, op: ">=", value: 1, action: pause_post}   # guardrail_log 수동
+  - {metric: gap_post_without_public_source, op: ">=", value: 1, action: pause_post}      # 검문기가 content_log에서 직접 검사
+  - {metric: gap_posts_per_day, op: ">", value: content.daily_cap, action: pause_publishing}   # 검문기 직접 검사
   - {metric: ad_spend_7d, op: ">", value: channels.ads.budget.cap_7d_krw, action: pause_ads}
   - {metric: bot_rate, op: ">", value: 0.30, min_inbound: 5, scope: per_source, action: pause_source}
 
-adjust_rules:
-  - "광고 상한 절반 소진·광고 TVR 0 → 광고 정지, 예산은 쓰지 않음"
-  - "트리거별 CPTVR > 2x 평균 2일 연속 → 해당 그룹 예산 50% 삭감, 최저 CPTVR 그룹으로 이동"
-  - "광고 지역은 매일 trigger_map 상위 구로 갱신"
+adjust_rules:   # 발동하면 LOOP-CHANGELOG.md에 1줄
+  - "질문 유형 가지치기: 발행 3일 지난 글 3편 이상인 kw_type 중 글당 검색 유입 < 전체 평균 × 0.5 → 다음 날부터 발행 중단, 남는 발행은 글당 유입 최고 유형으로"
+  - "증명된 칸 확장: 다음 날 같은 진료과 인접 지역어 또는 같은 지역 인접 진료과 1칸 추가"
+  - "발행 4일이 지나도 검색 유입 0인 칸은 다시 쓰지 않음"
+  - "광고 상한 절반 소진·광고 VSR 0 → 광고 정지, 예산은 쓰지 않음"
+  - "광고 지역은 매일 증명된 칸(없으면 빈칸 우선순위·trigger_map) 상위 구로 갱신"
   - "샘플 대기열 > sample_daily_cap x 2 → 광고 50% 감액"
-  - "불쾌감 회신·신고 1건 → 해당 문안 사람 재승인 전까지 정지"
+  - "불쾌감 회신·신고 1건 → 해당 문안·글 사람 재승인 전까지 정지"
 
-capacity: {sample_daily_cap: 10, sample_sla_business_days: 3, sample_target_hours: 48}
-decisions:   # 10/24 확정
+capacity: {sample_daily_cap: 10, sample_sla_business_days: 3, sample_target_hours: 48, gap_post_daily_cap: 3}
+decisions:   # 10/24
   D1: "샘플 일일 제작 상한 10건"
   D3: "광고 7일 상한 = 첫 달 병원가 × 목표 유료 1건, 일 예산은 산식 (상한 금액은 사용자 확인 필요)"
   D5: "실장·크리에이터 소개 보상: 첫 달 이용료 10% 수동 정산"
   D6: "병원가 표준, 가격은 어필리에이트에게만 비공개 공유"
+  D7: "빈칸 글 게시 위치 = 대표 네이버 블로그 '동네 건강정보' 카테고리 (결정 대기 — 대표 블로그 존재·검색 노출 상태 확인 후)"
   removed: ["D2 우편", "D4 채용공고 지원"]
-d0_checks: ["심평원 getHospBasisList 응답 estbDd(개설일자) 필드 — 공식 페이지엔 응답 스키마 없음, 제3자 저장소 README에 사용 기록. 인증키로 실제 호출해 확인","네이버 키워드 도구 조회 (검색수·클릭수·예상 입찰가)", "네이버 검색광고 지역 타겟팅 단위 (시·군·구 가능 여부)"]
+d0_checks:
+  - "심평원 getHospBasisList 응답 estbDd(개설일자) 필드 — 인증키로 실제 호출해 확인"
+  - "네이버 키워드 도구 조회 (검색수·클릭수·예상 입찰가)"
+  - "지역어+증상 조합의 검색수 분포"
+  - "네이버 검색광고 지역 타겟팅 단위 (시·군·구 가능 여부)"
+  - "병원 이름 없는 건강정보 글의 의료광고 해당 여부 법무 확인"

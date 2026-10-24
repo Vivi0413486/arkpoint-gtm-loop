@@ -1,0 +1,10 @@
+date,post_url,region,specialty,cell_id,keyword,kw_type,published_at,views_cum,search_views_cum,top_query,source_url
+2026-10-28,SAMPLE-POST-01,망원동,피부과,mangwon-derm,망원동 두드러기,증상,2026-10-25T10:00:00,20,15,망원동 두드러기,https://health.kdca.go.kr/
+2026-10-31,SAMPLE-POST-01,망원동,피부과,mangwon-derm,망원동 두드러기,증상,2026-10-25T10:00:00,51,34,망원동 두드러기,https://health.kdca.go.kr/
+2026-10-31,SAMPLE-POST-02,합정,내과,hapjeong-im,합정 위내시경 시기,진료시기,2026-10-25T11:00:00,19,12,합정 위내시경 언제,https://health.kdca.go.kr/
+2026-10-31,SAMPLE-POST-03,공덕,비뇨의학과,gongdeok-uro,공덕 방광염 생활 관리,생활관리,2026-10-25T15:00:00,7,3,방광염 물 많이,https://health.kdca.go.kr/
+2026-10-31,SAMPLE-POST-04,역삼,피부과,yeoksam-derm,역삼 여드름,증상,2026-10-26T10:00:00,22,13,역삼 여드름,https://health.kdca.go.kr/
+2026-10-31,SAMPLE-POST-05,역삼,피부과,yeoksam-derm,역삼 피부 알레르기 검사,검사,2026-10-26T11:00:00,9,5,피부 알레르기 검사,https://health.kdca.go.kr/
+2026-10-31,SAMPLE-POST-06,잠실,내과,jamsil-im,잠실 위염 식단,생활관리,2026-10-26T15:00:00,8,4,위염 식단,https://health.kdca.go.kr/
+2026-10-31,SAMPLE-POST-07,목동,피부과,mokdong-derm,목동 피부 건조증 관리,생활관리,2026-10-27T10:00:00,5,2,건조증 관리,https://health.kdca.go.kr/
+2026-10-31,SAMPLE-POST-08,망원동,내과,mangwon-im,망원동 장염 증상,증상,2026-10-29T10:00:00,11,6,장염 증상,https://health.kdca.go.kr/

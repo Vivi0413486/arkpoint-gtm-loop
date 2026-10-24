@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""GTM 트리거 루프(v4) 결정적 검문기 — ledger.csv를 검사하고 TVR·트리거 농축도(Lift)·채널 지표를 출력한다.
+"""GTM 빈칸 루프(v5) 결정적 검문기 — ledger.csv를 검사하고 VSR·도달·H-G·트리거 농축도(Lift)·채널 지표를 출력한다.
 
 사용: python3 validate_ledger.py ledger.csv [--stats channel_stats.csv] [--pop population.csv]
-                                 [--guard guardrail_log.csv] [--now 2026-10-28T23:00:00] [--ad-cap 금액]
+                                 [--content content_log.csv] [--guard guardrail_log.csv]
+                                 [--now 2026-10-28T23:00:00] [--ad-cap 금액]
   ledger.csv: 신청 병원 1곳 = 1행 (우편·아웃바운드가 없으므로 원장은 인바운드 신청만 담는다)
   channel_stats.csv: source,spend_krw,visits  (채널 비용·UTM 방문 수. 어필리에이트 정산액은 spend에 포함)
   population.csv: date,n_scanned,n_trig,n_t1,n_t3  (Trigger Watcher가 매일 스캔한 모집단 규모)
+  content_log.csv: date,post_url,region,specialty,cell_id,keyword,kw_type,published_at,
+                   views_cum,search_views_cum,top_query,source_url  (빈칸 글 1편 × 하루 = 1행, 누적값)
   guardrail_log.csv: date,channel,item,count  (원장으로 판정 못 하는 가드레일 수동 기록)
   --now: 미전달 SLA 초과 판정 기준 시각 (기본: 현재 시각)
   --ad-cap: 광고 7일 상한(원). 없으면 환경변수 GTM_AD_CAP_7D_KRW. 병원가 비공개(D6)라 코드에 적지 않는다
@@ -35,8 +38,16 @@ TRIGGERS = set(TRIGGER_DAYS) | {"none"}
 C2_RULE = {"T1": 25, "T3": 22, "none": 0}
 LIFT_SUPPORT, P_SUPPORT, MIN_N = 2.0, 0.10, 5
 MIN_HITS = 2                     # 모집단 비율이 낮으면 1건만으로 p<0.10이 나오므로 지지에는 최소 2건
-AD_PREFIX = "sa_"                # 트리거 키워드 검색광고 소스 (sa_t1, sa_t3)
+AD_PREFIX = "sa_"                # 검색광고 소스 (sa_t1, sa_t3, sa_gap)
 AD_CAP_ENV = "GTM_AD_CAP_7D_KRW"  # D3: 7일 상한 = R-04 주3회 병원가(첫 달) × 7일 목표 유료 신청 1건, 값은 실행 시 주입
+# v5 빈칸 글·도달 (스펙 content 블록과 동일하게 유지)
+POST_DAILY_CAP = 3               # 빈칸 글 일 발행 상한
+PROVEN_MIN_SEARCH_VIEWS = 20     # 증명된 칸: 발행 7일 이내 검색 유입 조회 합 하한 (가설, D3에 한 번만 조정)
+PROVEN_WINDOW_DAYS = 7
+HG_ELIGIBLE_DAYS, HG_MIN_CELLS, HG_SUPPORT_RATIO = 4, 5, 0.30   # H-G: 첫 발행 4일 경과 칸 5개 이상에서 증명 비율 30%
+PRUNE_AGE_DAYS, PRUNE_MIN_POSTS, PRUNE_RATIO = 3, 3, 0.5        # 질문 유형 가지치기 신호
+CONTENT_COLS = ("date", "post_url", "region", "specialty", "cell_id", "keyword", "kw_type",
+                "published_at", "views_cum", "search_views_cum", "top_query", "source_url")
 
 
 def grade(score):
@@ -80,7 +91,7 @@ def is_vsr(r):
 
 
 def is_tvr(r):
-    # NSM: 신청 시점에 트리거 유효기간 안이었던 병원의 VSR
+    # TVR(하위 지표): 신청 시점에 트리거 유효기간 안이었던 병원의 VSR
     return is_vsr(r) and trigger_valid_at_request(r)
 
 
@@ -122,9 +133,117 @@ def enrichment(label, rows, hit, p0):
           f" | 지지 문턱: 신청 {goal_n}건 중 {k_needed(goal_n, p0)}건")
 
 
+def check_content(path, now, errors):
+    # 빈칸 글 도달 기록 검사 + L0 지표·H-G 판정·가지치기 신호 출력
+    reader = csv.DictReader(open(path, encoding="utf-8"))
+    print("== L0 빈칸 글·도달 ==")
+    missing = [c for c in CONTENT_COLS if c not in (reader.fieldnames or [])]
+    if missing:
+        errors.append(f"도달 기록: 열 누락 {missing}")
+        return
+    rows = list(reader)
+    if not rows:
+        print("빈칸 글 기록 없음")
+        return
+    posts = defaultdict(list)
+    for i, r in enumerate(rows, start=2):
+        tag = f"도달 행{i}({r.get('post_url')})"
+        # 열 개수가 모자란 행은 값이 None으로 들어온다 → 빈 문자열로 맞춘 뒤 필수 값 검사
+        r = {c: (r.get(c) or "").strip() for c in CONTENT_COLS}
+        if not all(r[c] for c in ("date", "post_url", "region", "cell_id", "kw_type", "published_at")):
+            errors.append(f"{tag}: 필수 값 누락")
+            continue
+        try:
+            views, search = int(r["views_cum"] or 0), int(r["search_views_cum"] or 0)
+            day, pub = ts(r["date"]), ts(r["published_at"])
+        except ValueError as e:
+            errors.append(f"{tag}: 숫자·날짜 형식 오류 ({e})")
+            continue
+        if day > now:
+            continue   # --now 이후 기록은 집계하지 않음
+        if not r["source_url"].startswith("http"):
+            errors.append(f"가드레일: {tag} 공공 출처 URL 없음 → 글 정지")
+        if search > views:
+            errors.append(f"{tag}: 검색 유입 {search} > 전체 조회 {views}")
+        if day.date() < pub.date():
+            errors.append(f"{tag}: 기록일이 발행일보다 이름")
+        posts[r["post_url"]].append(r)
+
+    latest, in_window = {}, {}
+    for url, rs in posts.items():
+        rs.sort(key=lambda r: r["date"])
+        dates = [r["date"] for r in rs]
+        if len(set(dates)) != len(dates):
+            errors.append(f"도달 {url}: 같은 날 행이 2개 이상 (글마다 하루 1행)")
+        for col in ("cell_id", "region", "published_at", "kw_type"):
+            if len({r[col] for r in rs}) > 1:
+                errors.append(f"도달 {url}: {col}이 행마다 다름")
+        for a, b in zip(rs, rs[1:]):
+            for col in ("views_cum", "search_views_cum"):
+                if int(b[col] or 0) < int(a[col] or 0):
+                    errors.append(f"도달 {url}: {col} 누적값이 {a['date']}→{b['date']}에 줄어듦")
+        latest[url] = rs[-1]
+        limit = (ts(rs[0]["published_at"]) + timedelta(days=PROVEN_WINDOW_DAYS)).date()
+        window = [r for r in rs if ts(r["date"]).date() <= limit]
+        in_window[url] = window
+
+    # 일 발행 상한 (발행일 기준 글 수)
+    for day, n in Counter(ts(r["published_at"]).date() for r in latest.values()).items():
+        if n > POST_DAILY_CAP:
+            errors.append(f"가드레일: {day} 빈칸 글 {n}편 발행 > 상한 {POST_DAILY_CAP}편")
+
+    # 칸별 집계: 증명 = 발행 7일 이내 검색 유입 합 ≥ 하한 AND 유입 검색어에 지역어 포함
+    cells = defaultdict(lambda: {"first": None, "search": 0, "local_query": False, "region": ""})
+    for url, r in latest.items():
+        c = cells[r["cell_id"]]
+        pub = ts(r["published_at"])
+        c["first"] = pub if c["first"] is None else min(c["first"], pub)
+        c["region"] = r["region"]
+        window = in_window[url]
+        c["search"] += int(window[-1]["search_views_cum"] or 0) if window else 0
+        c["local_query"] |= any(r["region"] in w["top_query"] for w in window)
+    proven = {cid for cid, c in cells.items() if c["search"] >= PROVEN_MIN_SEARCH_VIEWS and c["local_query"]}
+    eligible = {cid for cid, c in cells.items() if c["first"] <= now - timedelta(days=HG_ELIGIBLE_DAYS)}
+
+    reach = sum(int(r["search_views_cum"] or 0) for r in latest.values())
+    views = sum(int(r["views_cum"] or 0) for r in latest.values())
+    print(f"발행: 글 {len(latest)}편 / 칸 {len(cells)}개")
+    print(f"환자 도달(검색 유입 조회 누적): {reach}회 / 전체 조회 {views}회 (조회수이며 사람 수 아님)")
+    print(f"증명된 칸: {len(proven)}개 " + (f"({', '.join(sorted(proven))})" if proven else ""))
+
+    # H-G 판정: 첫 발행 후 4일이 지난 칸 중 증명된 칸 비율
+    n, k = len(eligible), len(eligible & proven)
+    if n < HG_MIN_CELLS:
+        verdict = "표본 부족"
+    elif k / n >= HG_SUPPORT_RATIO:
+        verdict = "지지"
+    else:
+        verdict = "미확정 (7일 재측정)"
+    ratio = f"{k / n:.0%}" if n else "-"
+    print(f"H-G: 판정 대상 칸 {n}개 중 증명 {k}개 ({ratio}) → {verdict}"
+          f" | 아직 판정 전 칸 {len(cells) - n}개 | 지지 기준 {HG_MIN_CELLS}칸 이상·{HG_SUPPORT_RATIO:.0%}")
+
+    # 가지치기 신호: 발행 3일 지난 글이 3편 이상인 유형 중 글당 검색 유입이 전체 평균의 절반 미만
+    aged = [r for r in latest.values() if ts(r["published_at"]) <= now - timedelta(days=PRUNE_AGE_DAYS)]
+    if aged:
+        overall = sum(int(r["search_views_cum"] or 0) for r in aged) / len(aged)
+        by_type = defaultdict(list)
+        for r in aged:
+            by_type[r["kw_type"]].append(int(r["search_views_cum"] or 0))
+        print("질문 유형 | 글(3일 경과) | 글당 검색 유입")
+        signals = []
+        for t, vs in sorted(by_type.items()):
+            avg = sum(vs) / len(vs)
+            print(f"{t} | {len(vs)} | {avg:.1f}")
+            if len(vs) >= PRUNE_MIN_POSTS and avg < overall * PRUNE_RATIO:
+                signals.append(f"조정 신호: '{t}' 글당 {avg:.1f} < 전체 평균 {overall:.1f}의 절반 → 다음 날부터 발행 중단")
+        for s in signals:
+            print(s)
+
+
 def main(argv):
     opts = {}
-    for flag in ("--stats", "--pop", "--guard", "--now", "--ad-cap"):
+    for flag in ("--stats", "--pop", "--content", "--guard", "--now", "--ad-cap"):
         if flag in argv:
             i = argv.index(flag)
             opts[flag] = argv[i + 1]
@@ -204,10 +323,13 @@ def main(argv):
             p0 = {key: sum(int(p[col]) for p in pop) / scanned
                   for key, col in (("all", "n_trig"), ("T1", "n_t1"), ("T3", "n_t3"))}
 
+    if "--content" in opts:
+        check_content(opts["--content"], now, errors)
+
     inbound = [r for r in rows if r["g4"] != "NA"]
     vsr = [r for r in rows if is_vsr(r)]
     tvr = [r for r in rows if is_tvr(r)]
-    sent_tvr = [r for r in tvr if r["sample_sent_at"]]
+    sent = [r for r in vsr if r["sample_sent_at"]]
     print("== 퍼널 ==")
     if p0:
         print(f"L1 감지: 모집단 스캔 누적 {scanned}건, 트리거 비율 {p0['all']:.1%} (T1 {p0['T1']:.1%} / T3 {p0['T3']:.1%})")
@@ -215,21 +337,21 @@ def main(argv):
         print("L1 감지: 모집단 스캔 기록 없음")
     visits = sum(int(s.get("visits") or 0) for src, s in stats.items() if src not in EXCLUDED_SOURCES)
     print(f"L2 UTM 방문: {visits if stats else '채널 통계 없음'}")
-    print(f"L3 신청: {len(inbound)} / L4 검증 신청(VSR): {len(vsr)}")
-    print(f"L5 TVR(NSM): {len(tvr)} (" + ", ".join(f"{k} {sum(r['trigger'] == k for r in tvr)}" for k in TRIGGER_DAYS) + ")")
+    print(f"L3 신청: {len(inbound)} / L4 검증 신청(VSR, NSM): {len(vsr)}")
+    print(f"L5 TVR: {len(tvr)} (" + ", ".join(f"{k} {sum(r['trigger'] == k for r in tvr)}" for k in TRIGGER_DAYS) + ")")
     on_time = sum((ts(r["sample_sent_at"]) - ts(r["sample_requested_at"])).total_seconds() <= TARGET_HOURS * 3600
-                  for r in sent_tvr)
-    print(f"L6 샘플 전달: {len(sent_tvr)} (48h 목표 달성 {on_time}/{len(sent_tvr)})")
-    print(f"L7 결과 확인: {sum(bool(r['result_checked_at']) for r in sent_tvr)} / 전달 {len(sent_tvr)}")
-    print(f"L8 유료 신청: {sum(bool(r['paid_applied_at']) for r in tvr)}")
+                  for r in sent)
+    print(f"L6 샘플 전달: {len(sent)} (48h 목표 달성 {on_time}/{len(sent)})")
+    print(f"L7 결과 확인: {sum(bool(r['result_checked_at']) for r in sent)} / 전달 {len(sent)}")
+    print(f"L8 유료 신청: {sum(bool(r['paid_applied_at']) for r in vsr)}")
     print(f"제외(이음 CSO 경유): {len(all_rows) - len(rows)}행")
 
     # 소스별 판단표 (B-00 C1: 유료 전환·획득 비용·지원 부담)
     by_src = defaultdict(list)
-    for r in tvr:
+    for r in vsr:
         by_src[r["source"]].append(r)
     print("== 소스 판단표 ==")
-    print("source | VSR | TVR | 유료신청 | 평균제작h | CPTVR | 채널비용/유료신청 | 봇률")
+    print("source | VSR | TVR | 유료신청 | 평균제작h | CPVSR | 채널비용/유료신청 | 봇률")
     for src in sorted(set(by_src) | {r["source"] for r in inbound} | {s for s in stats if s not in EXCLUDED_SOURCES}):
         v = by_src.get(src, [])
         paid = sum(bool(r["paid_applied_at"]) for r in v)
@@ -237,7 +359,7 @@ def main(argv):
         spend = int(stats[src]["spend_krw"] or 0) if src in stats else None
         src_in = [r for r in inbound if r["source"] == src]
         bots = sum(r["g5"] == "FAIL" for r in src_in)
-        line = f"{src} | {sum(r['source'] == src for r in vsr)} | {len(v)} | {paid} | "
+        line = f"{src} | {len(v)} | {sum(is_tvr(r) for r in v)} | {paid} | "
         line += f"{sum(hours) / len(hours):.1f}" if hours else "-"
         line += f" | {spend // len(v):,}원" if spend is not None and v else " | -"
         line += f" | {spend // paid:,}원" if spend is not None and paid else " | -"
@@ -256,19 +378,20 @@ def main(argv):
     # 광고 예산 상한과 손절 신호 (D3)
     print("== 광고 예산 ==")
     ad_spend = sum(int(s["spend_krw"] or 0) for src, s in stats.items() if src.startswith(AD_PREFIX))
-    ad_tvr = sum(r["source"].startswith(AD_PREFIX) for r in tvr)
+    # v5: GAP 그룹은 트리거 병원만 노리지 않으므로 손절 기준을 광고 TVR → 광고 VSR로 변경
+    ad_vsr = sum(r["source"].startswith(AD_PREFIX) for r in vsr)
     ad_cap = int(opts.get("--ad-cap") or os.environ.get(AD_CAP_ENV) or 0) or None
     if ad_cap is None:
         # 상한 없이 광고비가 나가면 D3 위반으로 본다
-        print(f"광고 지출 {ad_spend:,}원 / 7일 상한 미설정 | 광고 TVR {ad_tvr}")
+        print(f"광고 지출 {ad_spend:,}원 / 7일 상한 미설정 | 광고 VSR {ad_vsr}")
         if ad_spend > 0:
             errors.append(f"가드레일: 7일 상한 미설정 상태로 광고 지출 {ad_spend:,}원 (--ad-cap 또는 {AD_CAP_ENV} 필요)")
     else:
-        print(f"광고 지출 {ad_spend:,}원 / 7일 상한 {ad_cap:,}원 | 광고 TVR {ad_tvr}")
+        print(f"광고 지출 {ad_spend:,}원 / 7일 상한 {ad_cap:,}원 | 광고 VSR {ad_vsr}")
         if ad_spend > ad_cap:
             errors.append(f"가드레일: 광고 지출 {ad_spend:,}원이 7일 상한 {ad_cap:,}원 초과")
-        elif ad_spend >= ad_cap // 2 and ad_tvr == 0:
-            print("조정 신호: 상한의 절반을 썼는데 광고 TVR 0 → 광고 정지")
+        elif ad_spend >= ad_cap // 2 and ad_vsr == 0:
+            print("조정 신호: 상한의 절반을 썼는데 광고 VSR 0 → 광고 정지")
     pending = [r for r in rows if is_vsr(r) and not r["sample_sent_at"]]
     if len(pending) > SAMPLE_DAILY_CAP * 2:
         print(f"조정 신호: 샘플 대기열 {len(pending)}건 > 상한 {SAMPLE_DAILY_CAP}×2 → 광고 50% 감액")
