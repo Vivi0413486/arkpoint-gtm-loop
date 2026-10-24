@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>아크포인트 트리거 GTM 루프 — 한눈에 보기</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #ffffff; --ink: #1e2430; --sub: #5c6270; --line: #cfccc3;
+    --act: #0e6b66; --act-soft: #e3f1ef; --t1: #2a6290; --t3: #a85d1c; --human: #6b3f86;
+    --warn: #a3302a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif;
+    line-height: 1.6; font-size: 15px; }
+  main { max-width: 1080px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  h2 { font-size: 19px; margin: 44px 0 10px; padding-top: 18px; border-top: 1px solid var(--line); }
+  p { margin: 6px 0; }
+  .sub { color: var(--sub); font-size: 14px; }
+  .lead { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; margin: 16px 0; }
+  .lead b { color: var(--act); }
+  .t1 { color: var(--t1); font-weight: 600; } .t3 { color: var(--t3); font-weight: 600; }
+
+  /* 루프 다이어그램 */
+  .loop-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  svg { width: 100%; height: auto; display: block; }
+  .node rect { fill: #fff; stroke: var(--line); stroke-width: 1.5; rx: 8; cursor: pointer; transition: fill .2s, stroke .2s; }
+  .node:hover rect { stroke: var(--act); }
+  .node.active rect { fill: var(--act-soft); stroke: var(--act); stroke-width: 2.5; }
+  .node .num { font-size: 13px; font-weight: 700; fill: var(--act); }
+  .node .name { font-size: 17px; font-weight: 700; fill: var(--ink); }
+  .node .en { font-size: 11px; fill: var(--sub); }
+  .node .role { font-size: 12.5px; fill: var(--sub); }
+  .node .tag { font-size: 11px; font-weight: 600; }
+  .band rect { fill: #fbf7ee; stroke: #d9c9a3; stroke-width: 1.5; rx: 8; cursor: pointer; }
+  .band.active rect { fill: #f6ecd3; stroke: var(--t3); stroke-width: 2.5; }
+  .band text { font-size: 13px; fill: var(--ink); }
+  .arrow { stroke: #9a978e; stroke-width: 2; fill: none; marker-end: url(#ah); }
+  .arrow.hot { stroke: var(--act); stroke-width: 3; marker-end: url(#ah-hot); }
+  .fb { stroke: var(--act); stroke-width: 2; fill: none; stroke-dasharray: 6 5; marker-end: url(#ah-hot); }
+  .fb-label { font-size: 12px; fill: var(--act); font-weight: 600; }
+
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0 0; }
+  button { font: inherit; font-size: 14px; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line);
+    background: #fff; color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--act); }
+  button.primary { background: var(--act); color: #fff; border-color: var(--act); }
+  .step-ind { color: var(--sub); font-size: 13px; margin-left: auto; }
+
+  .detail { display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; margin-top: 12px; }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .box h3 { margin: 0 0 8px; font-size: 16px; }
+  .box dl { margin: 0; display: grid; grid-template-columns: 76px 1fr; gap: 4px 10px; font-size: 14px; }
+  .box dt { color: var(--sub); }
+  .box dd { margin: 0; }
+  .story { border-left: 3px solid var(--t1); background: #f3f7fb; }
+  .story .ex { font-size: 12px; color: var(--sub); margin-bottom: 4px; }
+  .pill { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); margin-right: 4px; }
+  .pill.auto { color: var(--act); border-color: var(--act); }
+  .pill.hum { color: #fff; background: var(--human); border-color: var(--human); }
+
+  /* 트리거 카드 */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .tcard { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .tcard.t1c { border-top: 4px solid var(--t1); } .tcard.t3c { border-top: 4px solid var(--t3); }
+  .tcard h3 { margin: 0 0 6px; font-size: 16px; }
+  .tl { margin: 10px 0 4px; }
+  .tl svg text { font-size: 11px; fill: var(--sub); }
+
+  /* 계산기 */
+  .calc { display: grid; grid-template-columns: 320px 1fr; gap: 14px; }
+  .calc label { display: block; font-size: 14px; margin-top: 10px; }
+  .calc input[type=range] { width: 100%; }
+  .calc .val { font-weight: 700; color: var(--act); }
+  .dots { display: flex; flex-wrap: wrap; gap: 3px; max-width: 330px; margin: 6px 0 10px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: #dedbd2; }
+  .dot.on { background: var(--t1); }
+  .verdict { font-size: 20px; font-weight: 700; margin: 6px 0; }
+  .v-ok { color: var(--act); } .v-wait { color: var(--t3); } .v-low { color: var(--sub); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--card); }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: #efede6; font-weight: 600; }
+
+  /* 7일 */
+  .days { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; }
+  .day { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px; font-size: 12.5px; }
+  .day b { display: block; font-size: 13px; color: var(--act); }
+  .day.hum { border-color: var(--human); }
+  .foot { margin-top: 40px; font-size: 12.5px; color: var(--sub); }
+  @media (max-width: 820px) {
+    .detail, .grid2, .calc { grid-template-columns: 1fr; }
+    .days { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>아크포인트 트리거 GTM 루프 — 한눈에 보기</h1>
+<p class="sub">설계서 v4(GTM-LOOP.md) 시각화 · 운영 2026-10-25 ~ 10-31 · 예시 병원과 숫자는 모두 가상입니다</p>
+
+<div class="lead">
+  <p><b>한 문장으로:</b> 블로그 문제가 <b>"지금"</b> 막 생긴 병원을 공개 기록으로 매일 찾고,
+  그런 병원이 많은 곳에 광고·크리에이터·대표 글을 집중한 다음,
+  실제로 들어온 신청이 그런 병원에 몰리는지 숫자로 확인하는 루프입니다.</p>
+  <p class="sub" style="margin-top:8px">병원에 먼저 연락하지 않습니다(우편·콜드 메일 없음). 찾은 병원 목록은 <b>"보낼 곳"</b>이 아니라
+  <b>"어디에 광고할지 정하는 지도"</b>이자 <b>"결과를 재는 기준"</b>으로 씁니다.</p>
+</div>
+
+<h2>1. 하루 한 바퀴 — 칸을 누르거나 ▶ 다음으로 따라가 보세요</h2>
+<div class="loop-wrap">
+<svg viewBox="0 0 1000 540" role="img" aria-label="8단계 루프 다이어그램">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9a978e"/></marker>
+    <marker id="ah-hot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e6b66"/></marker>
+  </defs>
+  <text x="30" y="24" font-size="13" fill="#5c6270" font-weight="600">찾고 → 정하고 → 알린다</text>
+  <text x="30" y="530" font-size="13" fill="#5c6270" font-weight="600">← 재고 → 고친다 (다음 날로)</text>
+
+  <!-- 화살표: 윗줄 -->
+  <path id="a1" class="arrow" d="M250,85 H268"/>
+  <path id="a2" class="arrow" d="M490,85 H508"/>
+  <path id="a3" class="arrow" d="M730,85 H748"/>
+  <!-- ④ → 병원 → ⑤ -->
+  <path id="a4" class="arrow" d="M860,130 V223"/>
+  <path id="aH" class="arrow" d="M860,297 V388"/>
+  <!-- 아랫줄 (오른쪽 → 왼쪽) -->
+  <path id="a5" class="arrow" d="M750,435 H732"/>
+  <path id="a6" class="arrow" d="M510,435 H492"/>
+  <path id="a7" class="arrow" d="M270,435 H252"/>
+  <!-- 피드백 -->
+  <path class="fb" d="M110,390 V132"/>
+  <path class="fb" d="M180,390 V185 H380 V132"/>
+  <text class="fb-label" x="22" y="260">다음 날</text>
+  <text class="fb-label" x="22" y="276">다시 스캔</text>
+  <text class="fb-label" x="196" y="220">조정 규칙 적용</text>
+  <text class="fb-label" x="196" y="236">(지역·예산·문안)</text>
+
+  <!-- 병원 띠 -->
+  <g class="band" id="nH" data-i="4">
+    <rect x="500" y="225" width="470" height="70"/>
+    <text x="518" y="252" font-weight="700" font-size="15">병원 원장·실장 (실제 고객)</text>
+    <text x="518" y="276">광고·크리에이터 게시물·대표 글을 보고 → 기존 무료 샘플 신청 폼 제출</text>
+  </g>
+</svg>
+<div class="controls">
+  <button id="prev">◀ 이전</button>
+  <button id="next" class="primary">▶ 다음</button>
+  <button id="play">자동 재생</button>
+  <span class="step-ind" id="ind"></span>
+</div>
+</div>
+
+<div class="detail">
+  <div class="box" id="info"></div>
+  <div class="box story" id="story"></div>
+</div>
+
+<h2>2. 루프가 찾는 "지금" 신호 두 가지</h2>
+<div class="grid2">
+  <div class="tcard t1c">
+    <h3 class="t1">T1 신규 개원</h3>
+    <p>심평원 병원정보의 <b>개설일이 90일 안</b>인 의원. 블로그를 0에서 시작하고, 지금 업체를 고르는 병원입니다.</p>
+    <div class="tl"><svg viewBox="0 0 420 50">
+      <line x1="10" y1="22" x2="410" y2="22" stroke="#cfccc3" stroke-width="2"/>
+      <rect x="40" y="14" width="300" height="16" fill="#2a6290" opacity=".18"/>
+      <circle cx="40" cy="22" r="6" fill="#2a6290"/>
+      <text x="22" y="46">개설일</text>
+      <text x="150" y="12">유효기간 90일 (이 안에 신청하면 트리거 병원)</text>
+      <line x1="340" y1="12" x2="340" y2="32" stroke="#2a6290" stroke-width="2"/>
+      <text x="318" y="46">+90일 만료</text>
+    </svg></div>
+    <p class="sub">증거: 심평원 응답의 sha256 해시 · 광고 키워드: 개원 마케팅, 병원 개원 블로그 등</p>
+  </div>
+  <div class="tcard t3c">
+    <h3 class="t3">T3 발행 단절</h3>
+    <p>6개월 동안 주 1회 이상 쓰다가 <b>최근 28일 0건</b>인 블로그. 대행사 해지나 담당자 퇴사로 공백이 생긴 순간입니다.</p>
+    <div class="tl"><svg viewBox="0 0 420 50">
+      <line x1="10" y1="22" x2="410" y2="22" stroke="#cfccc3" stroke-width="2"/>
+      <g fill="#a85d1c"><circle cx="20" cy="22" r="3"/><circle cx="40" cy="22" r="3"/><circle cx="60" cy="22" r="3"/><circle cx="80" cy="22" r="3"/><circle cx="100" cy="22" r="3"/><circle cx="120" cy="22" r="3"/></g>
+      <text x="10" y="46">주 1회 이상 발행 (180일)</text>
+      <text x="140" y="12">28일 침묵</text>
+      <rect x="230" y="14" width="140" height="16" fill="#a85d1c" opacity=".18"/>
+      <line x1="230" y1="12" x2="230" y2="32" stroke="#a85d1c" stroke-width="2"/>
+      <text x="200" y="46">트리거 날짜</text>
+      <text x="268" y="12">유효 30일</text>
+    </svg></div>
+    <p class="sub">증거: 네이버 블로그 RSS 원문 해시 · 광고 키워드: 병원 블로그 대행 해지, 대행 바꾸기 등</p>
+  </div>
+</div>
+<p class="sub" style="margin-top:10px">트리거 날짜는 개설일이나 마지막 게시일에서 나옵니다. 그래서 언제 조회해도 결과가 같고,
+신청 병원과 모집단을 <b>같은 규칙</b>으로 나눌 수 있습니다. 신청자 쪽만 유리하게 분류할 수 없습니다.</p>
+
+<h2>3. "효과 있다"는 어떻게 판정하나 — 직접 움직여 보세요</h2>
+<p>서울 의원 전체(모집단) 중 트리거 병원은 소수입니다. 그런데 <b>신청한 병원</b> 중에는 트리거 병원 비율이 훨씬 높다면,
+트리거에 맞춘 채널이 실제로 그 병원들을 데려온다는 뜻입니다. 검문기(validate_ledger.py)와 같은 공식으로 계산합니다.</p>
+<div class="calc">
+  <div class="box">
+    <label>모집단 트리거 비율 p₀ <span class="val" id="p0v"></span>
+      <input type="range" id="p0" min="1" max="30" value="8"></label>
+    <label>모집단 안 검증 신청 n <span class="val" id="nv"></span>
+      <input type="range" id="n" min="0" max="30" value="5"></label>
+    <label>그중 트리거 병원 k <span class="val" id="kv"></span>
+      <input type="range" id="k" min="0" max="5" value="2"></label>
+    <p class="sub" style="margin-top:12px">지지 조건: k ≥ 2 · Lift ≥ 2 · p &lt; 0.10<br>n &lt; 5면 표본 부족 · 7일 안에는 "기각"을 내지 않음</p>
+  </div>
+  <div class="box">
+    <p class="sub">모집단 100곳 중 트리거 병원</p>
+    <div class="dots" id="popDots"></div>
+    <p class="sub">신청 병원 중 트리거 병원</p>
+    <div class="dots" id="reqDots"></div>
+    <div class="verdict" id="verdict"></div>
+    <p id="calcText"></p>
+    <p class="sub" id="need"></p>
+  </div>
+</div>
+
+<h2>4. 자동 브레이크 — 문제가 생기면 루프가 스스로 멈추거나 줄입니다</h2>
+<table>
+  <tr><th style="width:48%">이런 일이 생기면</th><th>루프가 하는 일</th></tr>
+  <tr><td>광고 7일 상한의 절반을 썼는데 광고로 들어온 TVR이 0건</td><td>광고 정지, 남은 예산은 쓰지 않음</td></tr>
+  <tr><td>광고 7일 지출이 상한을 넘음 (상한 = 첫 달 병원가 × 목표 유료 1건, 금액은 레포 밖)</td><td>광고 정지 · 검문기가 위반으로 기록</td></tr>
+  <tr><td>트리거 그룹의 CPTVR(비용 ÷ TVR)이 평균의 2배를 2일 연속 넘음</td><td>그 그룹 예산 50%를 CPTVR이 가장 낮은 그룹으로 이동</td></tr>
+  <tr><td>샘플 대기열이 20건 초과 (하루 상한 10건 × 2)</td><td>광고 예산 50% 감액</td></tr>
+  <tr><td>(광고)·협찬 표기 누락, 보장 문구, 공개 채널 가격 노출 — 1건이라도</td><td>해당 채널 즉시 정지</td></tr>
+  <tr><td>소스별 봇률 30% 초과 (유입 5건 이상인 소스)</td><td>해당 소스 정지</td></tr>
+  <tr><td>불쾌감 회신·신고 1건</td><td>해당 문안은 사람이 다시 승인할 때까지 정지</td></tr>
+</table>
+
+<h2>5. 7일 일정</h2>
+<div class="days">
+  <div class="day hum"><b>D0 10/24</b>광고 상한 확정, 외부 사실 3건 확인, 일 예산 계산</div>
+  <div class="day"><b>D1 10/25</b>첫 스캔 → p₀ 실측, 대표 글 #1(T1), 크리에이터 후보 30명</div>
+  <div class="day"><b>D2 10/26</b>T1·T3 검색광고 시작, 어필리에이트 제안 8건</div>
+  <div class="day"><b>D3 10/27</b>지역 갱신, 대표 글 #2(T3), 신청 분류 시작</div>
+  <div class="day"><b>D4 10/28</b>샘플 제작(하루 10건), 손절 신호 점검</div>
+  <div class="day"><b>D5 10/29</b>중간 Lift 점검, 예산 재배분</div>
+  <div class="day"><b>D6 10/30</b>결과 확인 팔로업, 병원가 견적 안내</div>
+  <div class="day hum"><b>D7 10/31</b>최종 집계, H-T 판정, 회고</div>
+  <div class="day hum"><b>11/01</b>Discord 결과 공유</div>
+</div>
+<p class="sub" style="margin-top:8px">테두리가 보라색인 날은 사람이 주로 하는 날입니다.</p>
+
+<h2>6. 사람이 하는 일은 네 가지뿐</h2>
+<table>
+  <tr><th>일</th><th>언제</th><th>왜 사람이 하나</th></tr>
+  <tr><td>광고·대표 글·크리에이터 문안 승인</td><td>문안이 새로 나올 때</td><td>의료광고 금지 표현·보장 문구를 최종 확인</td></tr>
+  <tr><td>샘플 제작·전달 (기존 절차)</td><td>신청 후 3영업일 안</td><td>기존 무료 샘플 흐름을 그대로 씀</td></tr>
+  <tr><td>병원 응대·유료 견적 (병원가)</td><td>샘플 전달 후</td><td>고객과의 직접 대화</td></tr>
+  <tr><td>어필리에이트 정산 (첫 달 이용료 10%)</td><td>소개 병원이 유료 신청할 때</td><td>비공개 가격표를 다루므로 수동 처리</td></tr>
+</table>
+
+<p class="foot">출처: GTM-LOOP.md §0·§3·§4·§5·§6·§7, gtm-loop.spec.yaml, validate_ledger.py (binom_greater·lift·k_needed).
+예시 병원 "하늘내과"와 모든 예시 숫자는 가상입니다. 병원가와 광고 상한 금액은 이 파일에 없습니다.</p>
+</main>
+
+<script>
+// 루프 단계 데이터 — GTM-LOOP.md §6 표 기준
+const STEPS = [
+  { id: 'n1', x: 30, y: 40, num: '①', name: '트리거 감지', en: 'Trigger Watcher', role: '공개 기록으로 "지금" 신호 찾기', tag: '자동',
+    what: '매일 아침 서울 내과·피부과·비뇨의학과 의원 전체를 공개 기록으로 훑어, 블로그 문제가 막 생긴 병원을 찾습니다.',
+    input: '심평원 병원정보(개설일), 네이버 블로그 RSS', output: 'population.csv 1행(스캔 수·T1 수·T3 수), 트리거 지도(구별 T1·T3 수)',
+    pass: '트리거마다 sha256 증거가 있고, T1 + T3 수가 전체 트리거 수와 맞음',
+    story: '10/27 아침 스캔. 강남구 "하늘내과"의 개설일이 9/25라 32일째 → <span class="t1">T1</span>. 오늘 강남구가 T1 병원 수 1위로 나왔습니다.' },
+  { id: 'n2', x: 270, y: 40, num: '②', name: '집행 계획', en: 'Channel Planner', role: '오늘 어디에 쓸지 정하기', tag: '자동',
+    what: '트리거 지도를 보고 광고 지역, 키워드 그룹, 크리에이터 후보, 대표 글 주제를 고릅니다. 감이 아니라 "오늘 트리거가 많은 구"가 기준입니다.',
+    input: '트리거 지도, 어제 Analyst의 조정 결과', output: '광고 지역·키워드 그룹·크리에이터 후보·글 주제',
+    pass: '일 예산 = min(키워드 클릭수 ÷ 30 × CPC, 남은 상한 ÷ 남은 일수) 안',
+    story: '강남구를 광고 지역으로 지정하고 T1 키워드 그룹("개원 마케팅" 등)을 켭니다. 개원 후기를 올리는 원장 크리에이터를 후보에 넣습니다.' },
+  { id: 'n3', x: 510, y: 40, num: '③', name: '문안 작성', en: 'Copywriter', role: '트리거별 맞춤 문구', tag: '자동 + 사람 승인',
+    what: '트리거 종류에 맞춰 문구를 씁니다. 가격, 상위 노출·예약 보장, 의료광고 금지 표현은 넣지 않습니다.',
+    input: '트리거 종류(T1·T3)', output: 'T1 문안, T3 문안',
+    pass: '금지·보장 표현과 가격 0건, 인용 수치에 출처 URL, 사람이 승인',
+    story: 'T1 문안: "개원 첫 90일 블로그, 진료과 맞춤 3개월 계획부터 받아 보세요." 가격·보장 표현이 없는지 확인한 뒤 사람이 승인합니다.' },
+  { id: 'n4', x: 750, y: 40, num: '④', name: '채널 집행', en: 'Channel Runners', role: '광고·크리에이터·대표 글', tag: '자동',
+    what: '세 갈래로 내보냅니다. ① 트리거 키워드 검색광고 ② 실장·원장 크리에이터 어필리에이트 ③ 대표 글(네이버 블로그·LinkedIn). 갈래마다 UTM이 달라 어디서 왔는지 셀 수 있습니다.',
+    input: '승인된 문안, 광고 지역', output: '광고 집행, 제안 로그, channel_stats.csv(소스별 비용·방문)',
+    pass: '7일 상한 안, 공개 채널 가격 노출 0건',
+    story: '강남구 검색광고 집행(UTM sa_t1). 하늘내과 원장이 "개원 마케팅"을 검색하다 광고를 봅니다.' },
+  { id: 'nH', band: true, num: '', name: '병원이 신청', en: '외부 세계', tag: '고객 행동',
+    what: '여기는 에이전트가 아니라 실제 고객이 움직이는 칸입니다. 병원이 소개 페이지를 보고 기존 무료 샘플 폼(병원명·진료과·이메일·플레이스 주소·동의)을 제출합니다.',
+    input: '광고·게시물·글', output: '샘플 신청 1건',
+    pass: '루프가 병원에 먼저 연락하지 않음(우편·콜드 메일 없음)',
+    story: '하늘내과 원장이 10/27 오후 무료 샘플을 신청합니다. 새 랜딩이나 새 폼 없이 기존 것을 그대로 씁니다.' },
+  { id: 'n5', x: 750, y: 390, num: '⑤', name: '신청 검증', en: 'Inbound Verifier', role: '진짜 병원인지 + 트리거 판정', tag: '자동',
+    what: '진짜 병원·진짜 사람인지 다섯 관문(G1~G5)으로 거릅니다. 그리고 ①과 똑같은 규칙으로 이 병원이 신청 시점에 트리거 병원이었는지 판정합니다.',
+    input: '신청서, 심평원·플레이스·블로그 공개 기록', output: 'G1~G5 결과, 봇 신호, 트리거 분류, 모집단 안 여부(in_pop)',
+    pass: '모집단 스캔과 같은 규칙·같은 증거 형식',
+    story: 'G1 요양기관 있음 · G2 영업 중 · G3 블로그 없음(개원 병원이라 정상) · G4 이메일·주소 일치 · G5 봇 신호 0개 → 통과. 신청일 기준 개원 32일 → <span class="t1">T1 유효</span>. 강남구·내과라 모집단 안. → <b>TVR 1건</b>.' },
+  { id: 'n6', x: 510, y: 390, num: '⑥', name: '우선순위', en: 'Scorer', role: 'C1~C5 점수 → A/B/C', tag: '자동',
+    what: '제작 대기열이 하루 상한(10건)을 넘을 때 누구부터 만들지 정하는 점수입니다. 효과 판정에는 쓰지 않습니다.',
+    input: '검증된 신청', output: 'C1~C5 점수, 등급(A ≥ 70, B 50~69, C ≤ 49)',
+    pass: '합계 일치, 배점 범위 안',
+    story: '내과 25 + T1 25 + 남은 유효기간 64% 14 + 근처 내과 5곳 이상 15 + 마케팅 흔적 없음 10 = 89점 → A등급. 제작 순서가 앞으로 갑니다.' },
+  { id: 'n7', x: 270, y: 390, num: '⑦', name: '샘플 제작', en: 'Sample Queue', role: '기존 절차로 제작·전달', tag: '사람',
+    what: '운영자가 기존 무료 샘플 절차로 3개월 계획과 샘플을 만들어 이메일로 보냅니다. 하루 10건이 상한입니다. 유료 안내 때는 병원가로 견적합니다.',
+    input: '검증된 신청(등급 순)', output: '전달 시각, 제작시간, 결과 확인, 유료 신청 기록',
+    pass: '3영업일 SLA 위반 0건, 제작시간 기록',
+    story: '10/28 제작, 10/29 이메일 전달. 10/30 결과 확인 팔로업 때 병원가로 유료 견적을 안내합니다.' },
+  { id: 'n8', x: 30, y: 390, num: '⑧', name: '분석·조정', en: 'Analyst', role: '검문기로 재고, 내일을 고침', tag: '자동',
+    what: '검문기(validate_ledger.py)로 TVR, Lift, p값, 판정을 계산합니다. 결과에 따라 다음 날 아침 지역·예산·문안을 조정하고, 문제가 있으면 채널을 멈춥니다.',
+    input: '원장, 모집단 기록, 채널 비용, 가드레일 기록', output: '일일 판단표, 조정 지시',
+    pass: '검문기 종료 코드 0 (위반 없음)',
+    story: '모집단 안 검증 신청 5건 중 트리거 2건, 모집단 비율 8% → Lift 5.21, p = 0.054 → <b>"지지"</b>. 다음 날 강남구 광고는 유지하고, CPTVR이 높은 그룹은 예산을 줄입니다.' },
+];
+
+// 화살표: 각 단계로 들어오는 화살표 id
+const INCOMING = { n2: 'a1', n3: 'a2', n4: 'a3', nH: 'a4', n5: 'aH', n6: 'a5', n7: 'a6', n8: 'a7' };
+
+const svg = document.querySelector('svg');
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text) e.textContent = text;
+  return e;
+}
+
+// 노드 그리기
+STEPS.forEach((s, i) => {
+  if (s.band) { document.getElementById('nH').addEventListener('click', () => go(i)); return; }
+  const g = el('g', { class: 'node', id: s.id });
+  g.appendChild(el('rect', { x: s.x, y: s.y, width: 220, height: 90, rx: 8 }));
+  g.appendChild(el('text', { class: 'num', x: s.x + 14, y: s.y + 26 }, s.num));
+  g.appendChild(el('text', { class: 'name', x: s.x + 36, y: s.y + 27 }, s.name));
+  g.appendChild(el('text', { class: 'en', x: s.x + 14, y: s.y + 47 }, s.en));
+  g.appendChild(el('text', { class: 'role', x: s.x + 14, y: s.y + 67 }, s.role));
+  const human = s.tag.includes('사람');
+  g.appendChild(el('text', { class: 'tag', x: s.x + 14, y: s.y + 84, fill: human ? '#6b3f86' : '#0e6b66' }, s.tag));
+  g.addEventListener('click', () => go(i));
+  svg.appendChild(g);
+});
+
+let cur = 0, timer = null;
+function go(i) {
+  cur = (i + STEPS.length) % STEPS.length;
+  const s = STEPS[cur];
+  document.querySelectorAll('.node, .band').forEach(n => n.classList.remove('active'));
+  document.getElementById(s.id).classList.add('active');
+  document.querySelectorAll('.arrow').forEach(a => a.classList.remove('hot'));
+  if (INCOMING[s.id]) document.getElementById(INCOMING[s.id]).classList.add('hot');
+  const human = s.tag.includes('사람');
+  document.getElementById('info').innerHTML =
+    `<h3>${s.num} ${s.name} <span class="sub" style="font-weight:400">${s.en}</span></h3>
+     <p><span class="pill ${human ? 'hum' : 'auto'}">${s.tag}</span></p>
+     <p>${s.what}</p>
+     <dl><dt>입력</dt><dd>${s.input}</dd><dt>출력</dt><dd>${s.output}</dd><dt>통과 조건</dt><dd>${s.pass}</dd></dl>`;
+  document.getElementById('story').innerHTML =
+    `<div class="ex">가상 예시 — 강남구 "하늘내과" (9/25 개원)</div><p>${s.story}</p>`;
+  document.getElementById('ind').textContent = `${cur + 1} / ${STEPS.length}`;
+}
+document.getElementById('next').onclick = () => go(cur + 1);
+document.getElementById('prev').onclick = () => go(cur - 1);
+document.getElementById('play').onclick = function () {
+  if (timer) { clearInterval(timer); timer = null; this.textContent = '자동 재생'; return; }
+  this.textContent = '멈춤';
+  timer = setInterval(() => go(cur + 1), 3500);
+};
+go(0);
+
+// 판정 계산기 — validate_ledger.py와 같은 공식
+const MIN_N = 5, MIN_HITS = 2, LIFT_SUPPORT = 2.0, P_SUPPORT = 0.10;
+function comb(n, r) { let c = 1; for (let i = 1; i <= r; i++) c = c * (n - r + i) / i; return c; }
+function binomGreater(k, n, p) { let s = 0; for (let i = k; i <= n; i++) s += comb(n, i) * p ** i * (1 - p) ** (n - i); return s; }
+function lift(k, n, p0) { return ((k + 0.5) / (n + 1)) / p0; }
+function supported(k, n, p0) { return k >= MIN_HITS && lift(k, n, p0) >= LIFT_SUPPORT && binomGreater(k, n, p0) < P_SUPPORT; }
+function kNeeded(n, p0) { for (let k = 0; k <= n; k++) if (supported(k, n, p0)) return k; return null; }
+
+const $p0 = document.getElementById('p0'), $n = document.getElementById('n'), $k = document.getElementById('k');
+function dots(box, total, on) {
+  box.innerHTML = '';
+  for (let i = 0; i < total; i++) { const d = document.createElement('span'); d.className = 'dot' + (i < on ? ' on' : ''); box.appendChild(d); }
+}
+function calc() {
+  const p0 = $p0.value / 100, n = +$n.value;
+  $k.max = n; if (+$k.value > n) $k.value = n;
+  const k = +$k.value;
+  document.getElementById('p0v').textContent = Math.round(p0 * 100) + '%';
+  document.getElementById('nv').textContent = n + '건';
+  document.getElementById('kv').textContent = k + '건';
+  dots(document.getElementById('popDots'), 100, Math.round(p0 * 100));
+  dots(document.getElementById('reqDots'), n, k);
+  const L = lift(k, n, p0), p = binomGreater(k, n, p0);
+  let v, cls;
+  if (n < MIN_N) { v = '표본 부족'; cls = 'v-low'; }
+  else if (supported(k, n, p0)) { v = '지지 — 트리거 채널이 트리거 병원을 데려옴'; cls = 'v-ok'; }
+  else { v = '미확정 — 7일 더 측정'; cls = 'v-wait'; }
+  const vEl = document.getElementById('verdict'); vEl.textContent = v; vEl.className = 'verdict ' + cls;
+  const rate = n ? Math.round(k / n * 100) : 0;
+  document.getElementById('calcText').innerHTML =
+    `신청 비율 ${rate}% vs 모집단 비율 ${Math.round(p0 * 100)}% → <b>Lift ${L.toFixed(2)}</b> · p = ${p.toFixed(3)}<br>
+     <span class="sub">p값 = 신청 병원이 모집단과 똑같이 무작위로 왔다면, 트리거 병원이 ${k}건 이상 나올 확률</span>`;
+  const gn = Math.max(n, MIN_N), need = kNeeded(gn, p0);
+  document.getElementById('need').textContent = need === null
+    ? `지지 문턱: 신청 ${gn}건으로는 지지가 나올 수 없음`
+    : `지지 문턱: 신청 ${gn}건 중 트리거 ${need}건 이상`;
+}
+[$p0, $n, $k].forEach(x => x.addEventListener('input', calc));
+calc();
+</script>
+</body>
+</html>
